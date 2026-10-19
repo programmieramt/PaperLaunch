@@ -193,7 +193,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
             OverwatcherClient.Result.NotInstalled -> DayState.Unavailable("Overwatcher ist nicht installiert.")
             OverwatcherClient.Result.NoPermission -> DayState.Unavailable(
-                "Kein Zugriff auf Overwatcher.\nInk Launcher nach Overwatcher installieren (gleicher Signaturschlüssel)."
+                "Kein Zugriff auf Overwatcher.\nPaper Launch nach Overwatcher installieren (gleicher Signaturschlüssel)."
             )
 
             is OverwatcherClient.Result.Failed -> DayState.Unavailable("Tag konnte nicht geladen werden:\n${result.message}")

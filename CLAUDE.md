@@ -1,4 +1,4 @@
-# Ink Launcher
+# Paper Launch
 
 Pen-first home screen for the **Boox Palma 2 Pro**: today's Overwatcher day page *is* the home screen.
 Black on white, no animations (e-ink). Successor of `../Launcher` (app list / favorites ported from there).
