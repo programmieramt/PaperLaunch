@@ -62,6 +62,10 @@ and Overwatcher must be installed before this app, otherwise the permission is n
   (they have no launcher icon; the notes overview is not exported). Library: action `com.onyx.action.LIBRARY`.
   Notes: action `com.onyx.intent.action.MAIN_ACTIVITY` + extra `json={"action":"OPEN_NOTE"}` (`TabIntentHelper`,
   other `TabAction`s: OPEN_LIBRARY, OPEN_STORAGE, OPEN_NOTE_SEARCH, ...)
+- Schedule follows the clock: on resume, when swiping from the tasks into the schedule and at startHour + 8 (13:00)
+  the half with the current time is shown; the Früh/Spät tabs still pick a half explicitly.
+- Tap on "N Aufgaben offen": jumps to the oldest day of the last 30 with an open task (Overwatcher's carry-over only
+  looks at yesterday, so tasks before an unused day stay behind).
 - Finger gestures: swipe left/right = panel, up = app list, down = notification shade. The swipe detector must never
   consume pen pointers: Compose then sends ACTION_CANCEL to the pen surface and the stroke is lost.
 

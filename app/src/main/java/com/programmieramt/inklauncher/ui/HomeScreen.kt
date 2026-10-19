@@ -93,7 +93,9 @@ fun HomeScreen(
     canUndo: Boolean,
     saveError: Boolean,
     sync: SyncStatus?,
+    searchingTasks: Boolean,
     gestures: HomeGestures,
+    onTasks: () -> Unit,
     onNotifications: () -> Unit,
     onSync: () -> Unit,
     onPanel: (Panel) -> Unit,
@@ -120,7 +122,8 @@ fun HomeScreen(
         }
         PenToolbar(tool, canUndo, onTool, onUndo, onOpenDay)
         StatusLine(
-            battery, (day as? DayState.Ready)?.page?.openTaskCount(), notificationCount, saveError, onNotifications,
+            battery, (day as? DayState.Ready)?.page?.openTaskCount(), searchingTasks, notificationCount, saveError,
+            onTasks, onNotifications,
         )
         Dock(favorites, onLaunch)
     }
@@ -163,38 +166,53 @@ private fun RowScope.ToolButton(label: String, active: Boolean = false, enabled:
     )
 }
 
-/** Battery, open tasks of the shown day, notifications; a tap opens the notifications. Null parts are left out. */
+/**
+ * Battery, open tasks of the shown day, notifications. A tap on the tasks jumps to the oldest open task, a tap on the
+ * notifications opens them. Null parts are left out.
+ */
 @Composable
 private fun StatusLine(
-    battery: BatteryState?, openTasks: Int?, notificationCount: Int?, saveError: Boolean, onNotifications: () -> Unit,
+    battery: BatteryState?, openTasks: Int?, searchingTasks: Boolean, notificationCount: Int?, saveError: Boolean,
+    onTasks: () -> Unit, onNotifications: () -> Unit,
 ) {
+    val tasksText = when {
+        searchingTasks -> "suche …"
+        openTasks == null -> null
+        openTasks == 0 -> "keine Aufgabe offen"
+        openTasks == 1 -> "1 Aufgabe offen"
+        else -> "$openTasks Aufgaben offen"
+    }
+    val notificationsText = when (notificationCount) {
+        null -> "Mitteilungen erlauben"
+        1 -> "1 Mitteilung"
+        else -> "$notificationCount Mitteilungen"
+    }
     val parts = listOfNotNull(
-        "Speichern fehlgeschlagen".takeIf { saveError },
-        battery?.let { "Akku ${it.percent} %" + if (it.charging) ", lädt" else "" },
-        openTasks?.let {
-            when (it) {
-                0 -> "keine Aufgabe offen"
-                1 -> "1 Aufgabe offen"
-                else -> "$it Aufgaben offen"
-            }
-        },
-        when (notificationCount) {
-            null -> "Mitteilungen erlauben"
-            1 -> "1 Mitteilung"
-            else -> "$notificationCount Mitteilungen"
-        },
+        ("Speichern fehlgeschlagen" to null).takeIf { saveError },
+        battery?.let { ("Akku ${it.percent} %" + if (it.charging) ", lädt" else "") to null },
+        tasksText?.let { it to onTasks },
+        notificationsText to onNotifications,
     )
-    Text(
-        parts.joinToString(" · "),
-        style = InkText.status,
-        textAlign = TextAlign.Center,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier
-            .fillMaxWidth()
-            .plainClickable(onNotifications)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    )
+    Row(
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+    ) {
+        parts.forEachIndexed { i, (text, onClick) ->
+            if (i > 0) Text(" · ", style = InkText.status)
+            Text(
+                text,
+                style = InkText.status,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                // The last part gives way if the line gets too long.
+                modifier = Modifier
+                    .then(if (i == parts.lastIndex) Modifier.weight(1f, fill = false) else Modifier)
+                    .then(if (onClick != null) Modifier.plainClickable(onClick) else Modifier)
+                    .padding(vertical = 8.dp),
+            )
+        }
+    }
 }
 
 @Composable

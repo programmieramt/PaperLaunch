@@ -13,6 +13,7 @@ import com.programmieramt.inklauncher.day.Panel
 import com.programmieramt.inklauncher.day.Stroke
 import com.programmieramt.inklauncher.day.SyncStatus
 import com.programmieramt.inklauncher.day.loadCalendarEvents
+import com.programmieramt.inklauncher.day.openTaskCount
 import com.programmieramt.inklauncher.pen.PenTool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -32,6 +33,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 
 sealed interface DayState {
     data object Loading : DayState
@@ -73,6 +75,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     private val _panel = MutableStateFlow(Panel.TASKS)
     val panel: StateFlow<Panel> = _panel.asStateFlow()
+
+    /** Schedule half of the last clock tick, to follow the clock across the boundary between Früh and Spät. */
+    private var clockHalf: Panel? = null
+
+    /** Looking for the oldest open task, see [jumpToOldestOpenTask]. */
+    private val _searchingTasks = MutableStateFlow(false)
+    val searchingTasks: StateFlow<Boolean> = _searchingTasks.asStateFlow()
 
     /** Keeps the last loaded day while reloading, so the e-ink screen does not flash. */
     private val _day = MutableStateFlow<DayState>(DayState.Loading)
@@ -116,6 +125,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             while (true) {
                 val now = LocalDateTime.now()
                 _now.value = now
+                followClock()
                 _battery.value = readBattery(getApplication())
                 refreshSync()
                 delay(60_000L - now.second * 1000L - now.nano / 1_000_000L)
@@ -207,6 +217,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     /** The launcher came to the front: catch up on time, reload the day, fetch other devices' changes. */
     fun onResume() {
         _now.value = LocalDateTime.now()
+        if (_panel.value.isSchedule()) showSchedule()
+        clockHalf = scheduleHalf(_now.value)
         _battery.value = readBattery(getApplication())
         reload()
         refreshSync()
@@ -238,6 +250,56 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _panel.value = panel
     }
 
+    /** Shows the half of the schedule containing the current time. */
+    fun showSchedule() {
+        _panel.value = scheduleHalf(_now.value)
+    }
+
+    /** Früh until startHour + 8 hours (13:00 with the default start at 5), then Spät. */
+    private fun scheduleHalf(time: LocalDateTime): Panel {
+        val startHour = (_day.value as? DayState.Ready)?.page?.startHour ?: 5
+        return if (time.hour < startHour + SCHEDULE_HALF_HOURS) Panel.MORNING else Panel.AFTERNOON
+    }
+
+    /** While the schedule is shown, switches from Früh to Spät (and back after midnight) when the clock crosses over. */
+    private fun followClock() {
+        val half = scheduleHalf(_now.value)
+        val previous = clockHalf
+        clockHalf = half
+        if (previous != null && half != previous && _panel.value.isSchedule()) _panel.value = half
+    }
+
+    private fun Panel.isSchedule() = this == Panel.MORNING || this == Panel.AFTERNOON
+
+    /**
+     * Shows the oldest day of the last [OPEN_TASKS_LOOKBACK_DAYS] with an open task, on the tasks panel.
+     * Overwatcher only carries over yesterday's tasks, so tasks of days before a day without use stay behind.
+     * Calls [onNone] (and shows today's tasks) if there is none.
+     */
+    fun jumpToOldestOpenTask(onNone: () -> Unit) {
+        if (_searchingTasks.value) return
+        _searchingTasks.value = true
+        viewModelScope.launch {
+            val today = LocalDate.now()
+            val oldest = withContext(Dispatchers.IO) {
+                (OPEN_TASKS_LOOKBACK_DAYS downTo 0L).asSequence()
+                    .map { today.minusDays(it) }
+                    .firstOrNull { date ->
+                        val result = overwatcher.loadDay(date) as? OverwatcherClient.Result.Ok
+                        (result?.page?.openTaskCount() ?: 0) > 0
+                    }
+            }
+            _searchingTasks.value = false
+            _panel.value = Panel.TASKS
+            if (oldest == null) {
+                dayOffset.value = 0
+                onNone()
+            } else {
+                dayOffset.value = ChronoUnit.DAYS.between(today, oldest)
+            }
+        }
+    }
+
     fun openDayInOverwatcher() = overwatcher.openDay(date.value)
 
     fun refreshApps() {
@@ -263,6 +325,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     companion object {
         const val MAX_FAVORITES = 8
         private const val MAX_UNDO = 50
+        private const val SCHEDULE_HALF_HOURS = 8
+        private const val OPEN_TASKS_LOOKBACK_DAYS = 30L
         private const val SYNC_INTERVAL_MS = 2 * 60_000L
     }
 }

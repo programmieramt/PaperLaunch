@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
                 val canUndo by viewModel.canUndo.collectAsStateWithLifecycle()
                 val saveError by viewModel.saveError.collectAsStateWithLifecycle()
                 val sync by viewModel.sync.collectAsStateWithLifecycle()
+                val searchingTasks by viewModel.searchingTasks.collectAsStateWithLifecycle()
                 var drawerOpen by remember { mutableStateOf(false) }
                 val keyboard = LocalSoftwareKeyboardController.current
 
@@ -81,7 +82,14 @@ class MainActivity : ComponentActivity() {
                         onSwipeUp = { drawerOpen = true },
                         onSwipeDown = { SystemActions.expandNotifications(this) },
                         onSwipeLeft = { viewModel.showPanel(viewModel.panel.value.next()) },
-                        onSwipeRight = { viewModel.showPanel(viewModel.panel.value.previous()) },
+                        onSwipeRight = {
+                            // Coming from the tasks, the schedule opens at the half with the current time.
+                            if (viewModel.panel.value == Panel.TASKS) {
+                                viewModel.showSchedule()
+                            } else {
+                                viewModel.showPanel(viewModel.panel.value.previous())
+                            }
+                        },
                     )
                 }
 
@@ -125,7 +133,13 @@ class MainActivity : ComponentActivity() {
                         canUndo = canUndo,
                         saveError = saveError,
                         sync = sync,
+                        searchingTasks = searchingTasks,
                         gestures = gestures,
+                        onTasks = {
+                            viewModel.jumpToOldestOpenTask {
+                                Toast.makeText(this@MainActivity, "Keine offenen Aufgaben", Toast.LENGTH_SHORT).show()
+                            }
+                        },
                         onSync = {
                             // Tells why the last sync failed (e.g. Tailscale down), then tries again.
                             sync?.takeIf { !it.ok }?.error?.let { error ->
